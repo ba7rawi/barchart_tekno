@@ -4,8 +4,6 @@ from dash.dependencies import Input, Output
 import plotly.graph_objects as go
 import dash_bootstrap_components as dbc
 import pandas as pd 
-from plotly.subplots import make_subplots
-
 
 df = pd.read_csv('EMSdataset.csv')
 df_diff = df.drop(columns=['Date/time']).diff()
@@ -25,24 +23,14 @@ app = dash.Dash(
  
     )
 
+
+
 app.layout = html.Div([
     dbc.Row([
-        html.H1(id='heatmap_app', children=['App Title'], style={'textAlign':'center', 'marginBottom':'5vh'}),
+        html.H1(id='heatmap_app',  style={'textAlign':'center', 'marginBottom':'5vh'}),
 
     ]),
     dbc.Row([
-        dbc.Col([
-            html.Div([
-                dcc.Dropdown(id='slct_month', 
-                            options=[
-                                {'label': m , 'value':m} for m in df['Date/time'].dt.month_name().unique()
-                                ],
-                            value='June',
-                            style={"textAlign": "center", 'border':'transparent'}, 
-                            ),
-
-            ], style={ 'marginBottom':'5vh', }),
-        ], width=2),
         dbc.Col([
             html.Div([
             dcc.Dropdown(
@@ -51,7 +39,7 @@ app.layout = html.Div([
                     {'label':'Generators', 'value':'generators'},
                     {'label':'receivers', 'value':'receivers'},
                 ],
-                value='generators',
+                value='receivers',
                 style={"textAlign": "center", 'border':'transparent'}, 
 
                 ),
@@ -59,61 +47,46 @@ app.layout = html.Div([
         ], width=2),
 
     ]),
-
     dbc.Row([
         html.Div([
-
-            dbc.Col(
-                dcc.Graph(id='heatmap', figure={}),
-                xs=12, sm=12, md=12, lg=12, xl=12
-
-            ),
+            dcc.Graph(id='stacked_barchart', figure={})
         ]),
     ]),
-], style={'margin':'5vh'})
+])
 
 @app.callback(
-    Output('slct_column', 'options'),
-    Output('slct_column', 'value'),
-    Input('slct_type2', 'value'),
-
-)
-def gens_or_rec(slct):
-    generators = [g for g in df.columns if g.startswith('Gen')]
-    receivers = [r for r in df.columns if r.startswith('Rec')]
-    ops = [{'label':i, 'value':i} for i in  eval(slct) ]
-    return ops, eval(slct)[0]
-
-@app.callback(
-    Output(component_id='heatmap', component_property='figure'),
-    Input(component_id='slct_month', component_property='value'),
+    Output('stacked_barchart', 'figure'),
     Input('slct_type2', 'value'),
 )
-def barchart2(slct_month, slct_type):
+def stacked_barchart(slctd_val):
     generators = [g for g in df.columns if g.startswith('Gen')]
     receivers = [r for r in df.columns if r.startswith('Rec')]
-    temp = df[eval(slct_type) + ['Date/time']].copy()
-    # temp = df.copy()
-    temp = temp[temp['Date/time'].dt.month_name() == slct_month]
-    temp = temp.sum()
-    temp =temp.sort_values(ascending=False)
-    dft = temp
-    trace1 = go.Bar(x = dft.index, y=dft.values.tolist(), text=dft.values.tolist())
-    trace2 = go.Scatter(
-        x=dft.index,
-        y=dft.cumsum(),
-        name='Cumulative Percentage',
-        yaxis='y2')
-    fig = make_subplots(specs=[[{"secondary_y": True}]])
-    fig.add_trace(trace1)
-    fig.add_trace(trace2)
-    fig.update_layout(
-        title='Pareto Chart title for <b>' + str(slct_month) + '</b> ... units in kwh', 
-        plot_bgcolor='rgba(0,0,0,0)', 
-        xaxis=dict(showgrid=False),          
-        yaxis=dict(showgrid=False),
-        showlegend=False)
+    cols = eval(slctd_val)
+    slct_month="June"
+    temp = df.copy()
+    temp['day'] = temp['Date/time'].dt.day_name()
+    temp_m = temp[temp['Date/time'].dt.month_name() == slct_month]
+    days = temp_m.day.unique()
+    data = []
+
+    data = []
+    counter = 0
+    total_vals = np.array([0.0,0.0,0.0,0.0,0.0,0.0,0.0])
+    for col in cols:
+        vals = temp_m.groupby(['day'])[col].sum()
+        total_vals += np.array(vals)
+        if counter+1 == len(cols):
+            data.append(go.Bar(name=col, x=days, y=vals, text=[f'{round(i/2700)}%' for i in total_vals]))
+        else:
+            data.append(go.Bar(name=col, x=days, y=vals))
+        counter +=1
+
+    fig = go.Figure(data = data)
+    fig.update_layout(barmode='stack')
+    fig.update_yaxes(title="KwH")
+
     return fig
+
 
 
 if __name__ == '__main__':
